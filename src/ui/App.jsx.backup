@@ -1,0 +1,152 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Activity, ArrowUpRight, BriefcaseBusiness, CheckCircle2, Clock3, Download,
+  Filter, Linkedin, LoaderCircle, Mail, MapPin, Phone, RefreshCw, Search,
+  ShieldCheck, Sparkles, Users, X
+} from 'lucide-react';
+
+const DEFAULT_KEYWORDS = 'Java Developer, C2C, Bench, Sales, W2, Full-Time, Hotlist';
+
+function timeAgo(date) {
+  const hours = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 3600000));
+  return hours < 1 ? 'Less than 1 hour ago' : `${hours}h ago`;
+}
+
+function initials(name = 'Recruiter') {
+  return name.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+}
+
+export default function App() {
+  const [keywords, setKeywords] = useState(DEFAULT_KEYWORDS);
+  const [hours, setHours] = useState('24');
+  const [usOnly, setUsOnly] = useState(true);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState(null);
+  const [source, setSource] = useState('demo');
+
+  async function loadPosts() {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({
+        keywords, hours, usOnly: String(usOnly)
+      });
+      const response = await fetch(`/api/posts?${params}`);
+      if (!response.ok) throw new Error(`Server returned ${response.status}`);
+      const data = await response.json();
+      setPosts(data.items || []);
+      setSource(data.source || 'demo');
+    } catch (err) {
+      setError('Could not reach the API. Start the backend with npm run dev and try again.');
+      setPosts([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadPosts(); }, []);
+
+  const visiblePosts = useMemo(() => posts.filter(post => {
+    const searchable = `${post.title} ${post.company} ${post.location} ${post.text} ${post.recruiter?.name}`.toLowerCase();
+    return searchable.includes(query.toLowerCase());
+  }), [posts, query]);
+
+  const recruiterCount = new Set(visiblePosts.map(p => p.recruiter?.name).filter(Boolean)).size;
+  const emailCount = visiblePosts.filter(p => p.recruiter?.emails?.length).length;
+
+  function exportCsv() {
+    const rows = [
+      ['Post title', 'Company', 'Location', 'Posted at', 'Recruiter', 'Email', 'Phone', 'Post URL'],
+      ...visiblePosts.map(p => [
+        p.title, p.company, p.location, p.postedAt, p.recruiter?.name || '',
+        (p.recruiter?.emails || []).join('; '), (p.recruiter?.phones || []).join('; '), p.url || ''
+      ])
+    ];
+    const csv = rows.map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'talentscope-recruiters.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return <div className="app-shell">
+    <aside className="sidebar">
+      <div className="brand"><div className="brand-mark"><Sparkles size={21} /></div><div><strong>TalentScope</strong><span>RECRUITER INTELLIGENCE</span></div></div>
+      <div className="workspace-label">WORKSPACE</div>
+      <button className="nav-item active"><Activity size={18} /> Post discovery <span className="nav-dot" /></button>
+      <button className="nav-item" onClick={() => document.getElementById('recruiter-results')?.scrollIntoView({ behavior: 'smooth' })}><Users size={18} /> Recruiters</button>
+      <button className="nav-item" onClick={exportCsv}><Download size={18} /> Export results</button>
+      <div className="sidebar-bottom">
+        <div className="secure-card"><ShieldCheck size={19}/><div><b>Privacy-aware</b><p>Use authorized data sources and respect platform permissions.</p></div></div>
+        <div className="profile-mini"><div className="avatar avatar-purple">TS</div><div><b>Talent research</b><span>Local workspace</span></div><span className="online-dot" /></div>
+      </div>
+    </aside>
+
+    <main className="main-content">
+      <header className="topbar">
+        <div className="breadcrumb">Workspace <span>/</span> <b>Post discovery</b></div>
+        <div className="top-actions"><span className="status-pill"><span className="green-dot" /> API {loading ? 'syncing' : 'connected'}</span><button className="linkedin-button" onClick={() => { window.location.href = '/auth/linkedin'; }}><Linkedin size={17} /> Connect LinkedIn <ArrowUpRight size={15}/></button></div>
+      </header>
+
+      <section className="page-heading">
+        <div><div className="eyebrow"><span className="eyebrow-line" /> SOURCING WORKSPACE</div><h1>Recruiter <span>intelligence.</span></h1><p>Discover relevant hiring posts, identify recruiter contacts, and turn signals into opportunities.</p></div>
+        <div className="heading-icon"><Sparkles size={25}/></div>
+      </section>
+
+      <section className="stats-grid">
+        <Stat icon={<BriefcaseBusiness size={19}/>} label="Matching posts" value={loading ? '—' : visiblePosts.length} foot="Based on current filters" tone="violet"/>
+        <Stat icon={<Users size={19}/>} label="Recruiters identified" value={loading ? '—' : recruiterCount} foot="Author details when available" tone="blue"/>
+        <Stat icon={<Mail size={19}/>} label="Posts with email" value={loading ? '—' : emailCount} foot="Contact details found in text" tone="green"/>
+        <Stat icon={<Clock3 size={19}/>} label="Time window" value={`${hours}h`} foot={usOnly ? 'US-based posts only' : 'All locations'} tone="amber"/>
+      </section>
+
+      <section className="filter-panel">
+        <div className="section-title"><div className="section-icon"><Filter size={17}/></div><div><h2>Search configuration</h2><p>Refine keywords and post eligibility</p></div><span className="filter-tag">LIVE FILTERS</span></div>
+        <form className="filters" onSubmit={e => { e.preventDefault(); loadPosts(); }}>
+          <label className="field keyword-field"><span>KEYWORDS <small>comma separated</small></span><div className="input-wrap"><Search size={17}/><input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Java Developer, C2C, W2..." /></div></label>
+          <label className="field"><span>POST AGE</span><select value={hours} onChange={e => setHours(e.target.value)}><option value="24">Last 24 hours</option><option value="48">Last 48 hours</option><option value="72">Last 3 days</option><option value="168">Last 7 days</option></select></label>
+          <label className="toggle-field"><input type="checkbox" checked={usOnly} onChange={e => setUsOnly(e.target.checked)}/><span className="toggle-ui"/><span><b>US-based jobs</b><small>Only show United States</small></span></label>
+          <button className="primary-button" type="submit" disabled={loading}>{loading ? <LoaderCircle className="spin" size={17}/> : <Search size={17}/>} Search posts</button>
+        </form>
+        <div className="keyword-chips">{keywords.split(',').map(k => k.trim()).filter(Boolean).map(k => <span className="chip" key={k}>{k}</span>)}</div>
+      </section>
+
+      <section className="results-section" id="recruiter-results">
+        <div className="results-heading"><div><h2>Matched posts <span className="count-badge">{visiblePosts.length}</span></h2><p>Review the post and the recruiter details extracted from available text.</p></div><div className="result-tools"><div className="small-search"><Search size={15}/><input placeholder="Search results..." value={query} onChange={e => setQuery(e.target.value)}/>{query && <button onClick={() => setQuery('')}><X size={14}/></button>}</div><button className="icon-button" onClick={loadPosts} title="Refresh"><RefreshCw size={16}/></button><button className="export-button" onClick={exportCsv}><Download size={15}/> Export CSV</button></div></div>
+
+        {source === 'demo' && <div className="demo-notice"><Sparkles size={15}/><span><b>Preview mode:</b> sample posts are shown to demonstrate the workflow. They are not verified live LinkedIn posts or real recruiter contacts.</span></div>}
+        {error && <div className="error-box">{error}</div>}
+        {loading ? <div className="loading-state"><LoaderCircle className="spin" size={26}/><b>Finding matching posts...</b><span>Applying keyword, date, and location filters</span></div> :
+          visiblePosts.length === 0 ? <div className="empty-state"><Search size={27}/><b>No matching posts</b><span>Try broadening your keywords or expanding the time window.</span></div> :
+          <div className="post-list">{visiblePosts.map((post, i) => <article className="post-card" key={post.id}>
+            <div className={`company-avatar company-${i % 4}`}>{(post.company || 'J').split(/\s+/).slice(0,2).map(s => s[0]).join('')}</div>
+            <div className="post-main"><div className="post-meta"><span className="company-name">{post.company}</span><span className="meta-dot">·</span><span><Clock3 size={12}/>{timeAgo(post.postedAt)}</span><span className="us-badge"><MapPin size={11}/>{post.countryCode === 'US' ? 'United States' : post.location}</span></div>
+              <h3>{post.title}</h3><p className="post-copy">{post.text}</p>
+              <div className="post-footer"><div className="author-line"><div className="avatar">{initials(post.recruiter?.name)}</div><div><b>{post.recruiter?.name || 'Author not identified'}</b><span>{post.recruiter?.title || 'Recruiter details unavailable'}</span></div></div><button className="details-button" onClick={() => setSelected(post)}>View recruiter details <ArrowUpRight size={14}/></button></div>
+            </div>
+          </article>)}</div>
+        }
+        <div className="results-foot"><span><CheckCircle2 size={14}/> Filters applied: {hours} hours{usOnly ? ' · US only' : ''}</span><span>Data mode: {source === 'demo' ? 'Sample data' : source}</span></div>
+      </section>
+      <footer className="footer">TalentScope <span>•</span> Built for responsible talent sourcing <span>•</span> Demo project</footer>
+    </main>
+
+    {selected && <div className="modal-backdrop" onClick={() => setSelected(null)}><div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-top"><div><span className="modal-kicker">RECRUITER PROFILE</span><h2>Contact details</h2></div><button className="icon-button" onClick={() => setSelected(null)}><X size={18}/></button></div>
+      <div className="modal-person"><div className="avatar avatar-large">{initials(selected.recruiter?.name)}</div><div><h3>{selected.recruiter?.name || 'Recruiter not identified'}</h3><p>{selected.recruiter?.title || 'Title not available'}</p><span>{selected.company}</span></div></div>
+      <div className="detail-list"><Detail icon={<MapPin size={16}/>} label="Location" value={selected.recruiter?.location || 'Not available'}/><Detail icon={<Mail size={16}/>} label="Email" value={selected.recruiter?.emails?.join(', ') || 'No email found in post'}/><Detail icon={<Phone size={16}/>} label="Phone" value={selected.recruiter?.phones?.join(', ') || 'No phone found in post'}/></div>
+      <div className="modal-actions">{selected.url && <a href={selected.url} target="_blank" rel="noreferrer" className="primary-button link-button">Open source post <ArrowUpRight size={15}/></a>}{selected.recruiter?.profileUrl && <a href={selected.recruiter.profileUrl} target="_blank" rel="noreferrer" className="secondary-button">Recruiter profile <ArrowUpRight size={15}/></a>}</div>
+      <p className="modal-disclaimer">Contact details are extracted from the displayed post text or supplied metadata. Verify details before contacting anyone.</p>
+    </div></div>}
+  </div>;
+}
+
+function Stat({ icon, label, value, foot, tone }) {
+  return <div className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><span className="stat-label">{label}</span><strong>{value}</strong><span className="stat-foot">{foot}</span></div>;
+}
+function Detail({ icon, label, value }) {
+  return <div className="detail-row"><div className="detail-icon">{icon}</div><div><span>{label}</span><b>{value}</b></div></div>;
+}

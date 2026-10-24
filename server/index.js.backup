@@ -1,0 +1,75 @@
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import { extractRecruiterDetails } from './recruiter-extractor.js';
+import { demoPosts } from './sample-data.js';
+
+const app = express();
+const port = Number(process.env.PORT || 4000);
+
+app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(express.json({ limit: '1mb' }));
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, service: 'TalentScope API', mode: 'demo-data' });
+});
+
+app.get('/api/posts', (req, res) => {
+  const hours = Math.min(Math.max(Number(req.query.hours || 24), 1), 168);
+  const terms = String(req.query.keywords || 'Java Developer,C2C,Bench,Sales,W2,Full-Time,Hotlist')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const usOnly = req.query.usOnly !== 'false';
+  const cutoff = Date.now() - hours * 60 * 60 * 1000;
+
+  const posts = demoPosts
+    .filter(post => new Date(post.postedAt).getTime() >= cutoff)
+    .filter(post => !usOnly || post.countryCode === 'US')
+    .filter(post => terms.length === 0 || terms.some(term =>
+      `${post.title} ${post.text} ${post.company} ${post.location}`.toLowerCase().includes(term)
+    ))
+    .map(post => ({ ...post, recruiter: extractRecruiterDetails(post.text, post) }));
+
+  res.json({
+    items: posts,
+    total: posts.length,
+    appliedFilters: { hours, usOnly, keywords: terms },
+    source: 'demo',
+    notice: 'Demo dataset only. Connect an authorized data provider for live results.'
+  });
+});
+
+/*
+ * LinkedIn OAuth note:
+ * Standard LinkedIn OIDC sign-in is for identity/profile scopes. It does NOT
+ * grant general post-search access. This route intentionally does not pretend
+ * to provide that permission. Configure an approved OAuth integration and
+ * requested scopes before enabling real sign-in.
+ */
+app.get('/auth/linkedin', (_req, res) => {
+  if (!process.env.LINKEDIN_CLIENT_ID || !process.env.LINKEDIN_REDIRECT_URI) {
+    return res.status(503).send(
+      'LinkedIn OAuth is not configured. Copy .env.example to .env and add credentials from your approved LinkedIn Developer app.'
+    );
+  }
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: process.env.LINKEDIN_CLIENT_ID,
+    redirect_uri: process.env.LINKEDIN_REDIRECT_URI,
+    scope: 'openid profile email',
+    state: cryptoRandomState()
+  });
+  res.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);
+});
+
+app.get('/auth/linkedin/callback', (_req, res) => {
+  res.status(501).send(
+    'OAuth callback needs server-side code exchange, state verification, secure session handling, and approved app configuration before production use.'
+  );
+});
+
+function cryptoRandomState() {
+  // State generation only; production must persist and verify state per session.
+  return Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2, '0')).join('');
+}
+
+app.listen(port, () => console.log(`TalentScope API running at http://localhost:${port}`));
