@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 
 const DEFAULT_KEYWORDS = 'Java Developer, C2C, Bench, Sales, W2, Full-Time, Hotlist';
+const API_BASE_URL = 'https://talentscope-recruiter-intelligence.onrender.com';
 
 function timeAgo(date) {
   const hours = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 3600000));
@@ -36,7 +37,7 @@ export default function App() {
       const params = new URLSearchParams({
         keywords, hours, usOnly: String(usOnly)
       });
-      const response = await fetch(`/api/posts?${params}`);
+      const response = await fetch(`${API_BASE_URL}/api/posts?${params}`);
       if (!response.ok) throw new Error(`Server returned ${response.status}`);
       const data = await response.json();
       setPosts(data.items || []);
@@ -110,7 +111,7 @@ export default function App() {
                 className="linkedin-button"
                 onClick={async () => {
                   try {
-                    const response = await fetch('/auth/logout', {
+                    const response = await fetch(`${API_BASE_URL}/auth/logout`, {
                       method: 'POST',
                       credentials: 'include'
                     });
@@ -135,7 +136,7 @@ export default function App() {
             <button
               className="linkedin-button"
               onClick={() => {
-                window.location.href = '/auth/linkedin';
+                window.location.href = `${API_BASE_URL}/auth/linkedin`;
               }}
             >
               <Linkedin size={17} />
