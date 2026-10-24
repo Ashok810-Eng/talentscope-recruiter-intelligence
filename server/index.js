@@ -1,6 +1,7 @@
 
 import 'dotenv/config';
 import express from 'express';
+import cors from 'cors';
 import session from 'express-session';
 import crypto from 'node:crypto';
 import { extractRecruiterDetails } from './recruiter-extractor.js';
@@ -22,6 +23,14 @@ const oauthConfigured = [
 if (isProduction) {
   app.set('trust proxy', 1);
 }
+
+// Allow the deployed GitHub Pages frontend to call the Render API.
+const allowedOrigin = new URL(frontendUrl).origin;
+
+app.use(cors({
+  origin: allowedOrigin,
+  credentials: true
+}));
 
 app.use(express.json({ limit: '1mb' }));
 
